@@ -1,0 +1,22 @@
+{# https://huggingface.co/deepseek-ai/DeepSeek-V2.5 #}
+{% if tools %}
+# 你能够使用以下工具来帮助你完成你的任务：
+## Tools
+### Function
+You have the following functions available:
+{% for tool in tools %}
+- `{{ tool.function.name }}`
+```json
+{{ tool.function }}
+```
+{% endfor %}
+# 请使用 JSON Blob 提供 **tool_name** (工具名称)和 **tool_input** (输入参数)来指定工具。
+有效的 **tool_name** 值为[{% for tool in tools %}{{ tool.function.name }}{% if not loop.last %}, {% endif %}{% endfor %}]中的一个。
+每个 JSON Blob 仅提供一个操作，如下所示：
+```
+{
+  "tool_name": 工具名称,
+  "tool_input": 工具参数输入
+}
+```
+{% endif %}

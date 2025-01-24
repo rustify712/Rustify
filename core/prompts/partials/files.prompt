@@ -1,0 +1,20 @@
+{% if project_files %}
+{% for file in project_files %}
+### {{ file.path }}{% if file.description %}: {{ file.description }}{% endif %}
+
+{% if show_file_summary %}
+#### 文件摘要
+{% if file.summary %}
+{{ file.summary }}
+{% endif %}
+{% endif %}
+{% if is_file_content or show_file_content %}
+#### 文件内容
+{% if file.content == "" %}
+文件内容为空
+{% else %}
+{{ file.content }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}

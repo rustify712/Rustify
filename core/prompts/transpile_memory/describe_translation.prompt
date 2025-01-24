@@ -1,0 +1,17 @@
+我将向你提供{{ source_lang }}代码到{{ target_lang }}代码的转译上下文，其中包括原始{{ source_lang }}代码，转译后的{{ target_lang }}代码、转译解决方案等信息。
+你需要创建一个简洁、可搜索的总结以及相关的转译问题提问，记录转移过程，以便再次遇到相似的问题时能够快速查找和应用之前的转译经验。
+
+## {{ source_lang }} 代码
+{% for node in translation_task.source.nodes %}
+{{ node.text }}
+{% endfor %}
+
+## {{ target_lang }} 代码
+{% if translation_task.target.text %}
+{{ translation_task.target.text }}
+{% else %}
+无需转译为{{ target_lang }}代码。
+{% endif %}
+
+## 转译解决方案
+{{ translation_task.target.description }}

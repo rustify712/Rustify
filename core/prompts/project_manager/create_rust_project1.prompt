@@ -1,0 +1,46 @@
+请根据以下提供的 C/C++ 项目摘要和结构，为迁移到 Rust 的项目生成基本信息，包括以下内容:
+
+- 项目名称：项目的名称，使用 snake_case 和 kebab-case 命名法。
+- 项目路径：项目的根目录路径。
+- 项目类型：项目的类型，例如库、应用程序等。
+- 项目摘要：简要描述项目的核心功能或主题。
+- 项目文件：占位符文件，用于展示项目的基本结构，除必要的 lib.rs 或 main.rs 以及 Cargo.toml 文件外，其他文件为空，无需添加任何内容。
+- C/C++ 模块与 Rust 文件映射：将 C/C++ 项目模块与 Rust 项目文件进行映射，以便于迁移。
+
+## C/C++ 项目摘要：
+{{ project_description }}
+## C/C++ 项目结构：
+{{ project_structure }}
+## 全部待转译的 C/C++ 模块
+{% for module in modules %}
+{{ module }}
+{% endfor %}
+
+**重要**：尽可能将一个 C/C++ 模块转译为一个 Rust 模块，以保持项目结构的一致性。
+例如：
+```json
+{
+  "type": "lib",
+  "name": "arraylist",
+  "path": "arraylist",
+  "description": "A Rust implementation of the arraylist module, originally written in C/C++.",
+  "files": [
+    {
+      "filepath": "Cargo.toml",
+      "text": "[package]\nname = \"arraylist\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]"
+    },
+    {
+      "filepath": "src/lib.rs",
+      "text": "pub mod arraylist;"
+    },
+    {
+      "filepath": "src/arraylist.rs",
+      "text": ""
+    }
+  ],
+  "file_map": {
+    "src/arraylist": ["src/arraylist.rs"]
+  }
+}
+```
+请你根据以上提供的信息，为迁移到 Rust 的项目生成基本信息。

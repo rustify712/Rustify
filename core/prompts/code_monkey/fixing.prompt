@@ -1,0 +1,33 @@
+{% if code %}
+以下是当前文件的 Rust 代码：
+{{ code }}
+{% endif %}
+
+编译器报错如下：
+{% for error in errors %}
+### 错误#{{ loop.index }}：{{ error.message }}
+#### 错误描述
+{{ error.rendered }}
+{#{% if error.code and error.code.code %}#}
+{##### 错误代码 {{ error.code.code }} 官方文档解释：#}
+{#{{ error.code.explanation }}#}
+{#{% endif %}#}
+{% endfor %}
+
+{% if experiences %}
+以下是专家在修错时总结的经验：
+{% for experience in experiences %}
+{{ experience }}
+{% endfor %}
+{% endif %}
+
+
+你需要进行深度推理分析和思考，找出错误原因并修复它，使代码能够成功编译。
+首先，你需要分析每个错误的描述，理解这是什么类型的错误。
+其次，思考这类错误通常是由什么原因引起的，以及如何修复这类错误，可以适当参考专家总结的经验。
+最后，针对每个错误，提出可能的解决方案，并逐一尝试修复这些错误，返回变更代码块，确保变更代码块的起始行号和结束行号涵盖所有相关内容（宏、注释、文档等等）。
+
+请注意，错误应逐步修复，不能一次性完成，每次修复一个错误后，需要在Rust代码块后再次检查错误修复情况以及所有权模型、引用借用关系等，审视代码是否存在其他潜在的错误。
+给出变更代码块即可，无需提供完整的 Rust 代码文件内容。
+
+{% include "partials/changed_code_block.prompt" %}

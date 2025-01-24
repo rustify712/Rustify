@@ -1,0 +1,48 @@
+{% if project_description or project_structure %}
+## 当前 Rust 工程基本信息：
+{% if project_description %}
+### 项目描述
+{{ project_description }}
+{% endif %}
+{% if project_structure %}
+### 项目结构
+{{ project_structure }}
+{% endif %}
+{% endif %}
+
+## 这些文件目前在项目中已经实现：
+{% include "partials/files.prompt" %}
+
+{% if translation_tasks %}
+## 以下是你所在小组的全部转译任务：
+{% for translation_task in translation_tasks %}
+
+### 任务#{{ loop.index }}：{{ translation_task.source.name }}{% if translation_task.status == "init" %} (未开始){% elif translation_task.status == "running" %} (进行中){% else %} (已完成){% endif %}
+{{ translation_task.source.description }}
+{#{% for node in translation_task.source.nodes %}#}
+{#{{ node.text }}#}
+{#{% endfor %}#}
+
+{% endfor %}
+{% endif %}
+
+## 以下是你需要完成的转译任务：{{ current_translation_task.source.name }}
+{% for node in current_translation_task.source.nodes %}
+{{ node.text }}
+
+{% endfor %}
+
+{% if related_translation_tasks %}
+## 以下是与当前任务相关的其他转译任务：
+{% for related_translation_task in related_translation_tasks %}
+{% if related_translation_task.target.description %}
+### {{ related_translation_task.source.name }}
+{{ related_translation_task.target.description }}
+{% endif %}
+{#{% if related_translation_task.target.text %}#}
+{#转译后的 Rust 代码：#}
+{#{{ related_translation_task.target.text }}#}
+{#{% endif %}#}
+
+{% endfor %}
+{% endif %}
