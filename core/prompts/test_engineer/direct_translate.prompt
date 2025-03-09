@@ -1,0 +1,19 @@
+用户会为你提供由C语言转译而来的 Rust 代码（可能有多个rust文件），一份针对原C语言代码的测试代码，请你根据原C语言测试代码生成对应的 Rust 测试代码。
+## Rust 代码：
+{% include "partials/files.prompt" %}
+## 原C语言测试代码：
+{{c_test_code}}
+## crate名称：
+{{crate_name}}
+## 待测模块名称：
+{% for rust_module_name in rust_module_names %}
+{{rust_module_name}}
+{% endfor %}
+
+## 注意
+- 转译后的 Rust 测试代码是针对提供的 Rust 代码的，请确保其能够正确调用其中的函数，并能够正确运行
+- 在 Rust 测试代码中，一般使用 use 语句引入待测模块。请根据"use::crate名称::待测模块名称::xxx"的格式，正确地使用 use 语句
+
+**重要**：若被测试的 Rust 代码为空，则**一定不要**为其编写测试代码，直接返回空的测试代码块即可。
+请在最后返回转译生成 Rust 测试代码块（多个rust模块也只生成一个总体的测试代码块），用```rust包裹。
+Let's step by step.

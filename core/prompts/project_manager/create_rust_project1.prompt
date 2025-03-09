@@ -7,10 +7,10 @@
 - 项目文件：占位符文件，用于展示项目的基本结构，除必要的 lib.rs 或 main.rs 以及 Cargo.toml 文件外，其他文件为空，无需添加任何内容。
 - C/C++ 模块与 Rust 文件映射：将 C/C++ 项目模块与 Rust 项目文件进行映射，以便于迁移。
 
-## C/C++ 项目摘要：
-{{ project_description }}
-## C/C++ 项目结构：
-{{ project_structure }}
+{### C/C++ 项目摘要：#}
+{#{{ project_description }}#}
+{### C/C++ 项目结构：#}
+{#{{ project_structure }}#}
 ## 全部待转译的 C/C++ 模块
 {% for module in modules %}
 {{ module }}
