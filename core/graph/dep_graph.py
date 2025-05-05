@@ -2,7 +2,7 @@ import copy
 import uuid
 from collections import defaultdict, deque
 from enum import Enum
-from typing import Callable, List, Optional, Dict, Tuple, Generator
+from typing import Callable, List, Optional, Tuple, Generator
 
 from graphviz import Digraph
 
@@ -417,12 +417,13 @@ class DepGraph:
         """构建依赖图
 
         1. 检查是否存在环，若存在，则解环：删除最后的依赖关系
-        2. 传递性缩减算法
+        2. 传递性缩减算法，简化依赖图
         Returns:
             DepGraph: 依赖图
         """
         # 1. 检查是否存在环，若存在，则解环：删除最后的依赖关系
         nodes, edges = self.check_and_break_cycle(nodes, edges)
+        # return nodes, edges
         # 2. 传递性缩减算法
         adj_list = defaultdict(lambda: defaultdict(list))
         edge_types = set(edge.type for edge in edges)
@@ -455,7 +456,22 @@ class DepGraph:
                         reachable[edge_type][node].add(neighbor)
                     # reachable[edge_type][node].update(reachable[edge_type][neighbor])
 
-        return nodes, reduced_edges
+        edges = reduced_edges
+
+        new_nodes = []
+        new_edges = []
+        # 3. 将匿名节点合并到上级节点
+        for node in nodes:
+            if node.extra.get("is_anonymous", False):
+                continue
+            new_nodes.append(node)
+        for edge in edges:
+            if edge.src.extra.get("is_anonymous", False):
+                continue
+            if edge.dst.extra.get("is_anonymous", False):
+                continue
+            new_edges.append(edge)
+        return new_nodes, new_edges
 
     @classmethod
     def check_and_break_cycle(cls, nodes: List[DGNode], edges: List[DGEdge]) -> Tuple[List[DGNode], List[DGEdge]]:
@@ -534,26 +550,30 @@ class DepGraph:
                 1. 单依赖边的两端顶点为 DGNodeType.FUNCTION
                 2. 单依赖边的 src 顶点为 DGNodeType.TYPEDEF, dst 顶点为 DGNodeType.STRUCT, DGNodeType.UNION, DGNodeType.ENUM
             """
-
             if len(node.src_edges) != 1:
+                # 当前节点被多个节点依赖，不合并
                 return [node]
             src_edge = node.src_edges[0]
-            # 1. 单依赖边的两端顶点为 DGNodeType.FUNCTION
+            # 1. 依赖边的两端顶点为 DGNodeType.FUNCTION
             if not ((src_edge.src.type == DGNodeType.FUNCTION and src_edge.dst.type == DGNodeType.FUNCTION) or
-                    # 2. 单依赖边的 src 顶点为 DGNodeType.TYPEDEF, dst 顶点为 DGNodeType.STRUCT, DGNodeType.UNION, DGNodeType.ENUM
+                    # 2. 依赖边的 src 顶点为 DGNodeType.TYPEDEF, dst 顶点为 DGNodeType.STRUCT, DGNodeType.UNION, DGNodeType.ENUM
                     (src_edge.src.type == DGNodeType.TYPEDEF and src_edge.dst.type in [DGNodeType.STRUCT,
                                                                                        DGNodeType.UNION,
                                                                                        DGNodeType.ENUM])
             ):
                 return [node]
+            # # 节点不位于同一文件
+            # if src_edge.src.location != src_edge.dst.location:
+            #     return [node]
             src_node = node.src_edges[0].src
             if len([
                 edge
                 for edge in src_node.edges
                 if edge.dst not in visited_nodes
             ]) != 1:
+                # 依赖当前节点的节点还有其他未访问的依赖项
                 return [node]
-            # 双向单依赖
+            # 单依赖
             return [node] + merge_linked_nodes(src_node)
 
         while len(nodes) - len(visited_nodes) != 0:
@@ -565,13 +585,31 @@ class DepGraph:
             if not leaf_nodes:
                 raise Exception("存在环路, 剩余节点：", set(nodes) - visited_nodes)
             # 向上寻找叶子节点的父节点，若单依赖，则合并
+            # BUG: 这一步可能引入访问过的节点
             for leaf_node in leaf_nodes:
                 yield_nodes.append(merge_linked_nodes(leaf_node))
 
+            # 如果任意两个 nodes 集合有交集，那么再次合并
+            for i in range(len(yield_nodes)):
+                for j in range(i + 1, len(yield_nodes)):
+                    if set(yield_nodes[i]) & set(yield_nodes[j]):
+                        yield_nodes[i] = list(set(yield_nodes[i]) | set(yield_nodes[j]))
+                        yield_nodes[j] = []
+
+            new_yield_nodes = []
             for yield_node in yield_nodes:
+                new_yield_node = []
+                for n in yield_node:
+                    if n not in visited_nodes:
+                        new_yield_node.append(n)
+                new_yield_nodes.append(new_yield_node)
+
+            new_yield_nodes = [nodes for nodes in new_yield_nodes if nodes]
+
+            for yield_node in new_yield_nodes:
                 visited_nodes.update(yield_node)
 
-            yield yield_nodes
+            yield new_yield_nodes
 
     def traverse_modules(self) -> Generator[Tuple[str, List[List[List[DGNode]]]], None, None]:
         """依次遍历所有出度为 0 的节点, 忽略临时节点, 按模块划分
@@ -613,7 +651,7 @@ class DepGraph:
         for group_id, nodes in groups.items():
             yield {
                 "module": group_id,
-                "files": file_groups[group_id],
+                "files": list(file_groups[group_id]),
             }, self.traverse_leaf_nodes_in_module(nodes)
 
     def print(self):

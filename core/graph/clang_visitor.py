@@ -6,8 +6,8 @@ import clang.cindex
 from core.config import Config
 
 try:
-    if Config.LIB_CLANG:
-        clang.cindex.Config.set_library_file(Config.LIB_CLANG)
+    if Config.CLANG_LIB_FILE:
+        clang.cindex.Config.set_library_file(Config.CLANG_LIB_FILE)
 except Exception as e:
     pass
 
@@ -203,12 +203,10 @@ class ClangNodeVisitor(NodeVisitor[clang.cindex.Cursor]):
             clang.cindex.Cursor: 语法树根节点光标
         """
         if unsaved_files:
-            is_unsaved_file = False
             for unsaved_file in unsaved_files:
-                if path == unsaved_file[0]:
-                    is_unsaved_file = True
-                    break
-            if is_unsaved_file is None:
+                unsaved_file_path, unsaved_file_content = unsaved_file
+                self._file_content_map[unsaved_file_path] = unsaved_file_content
+            if path not in self._file_content_map:
                 raise ValueError("找不到源代码，请检查 unsaved_files")
         else:
             if not os.path.exists(path):

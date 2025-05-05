@@ -9,6 +9,7 @@ import numpy as np
 
 from core.agents.base import AgentResponse, AgentResponseStatus, BaseAgent
 from core.agents.transpile_memory import TranspileMemory
+from core.translator import Translator
 from core.utils.prompt_loader import PromptLoader
 from core.schema.response import CodeMonkeyResponseType
 from core.schema.translation import TranslationTask, TranslationTaskStatus, TranslationUnitNode
@@ -111,13 +112,12 @@ class CodeMonkey(BaseAgent):
     """任务温度优化器映射, 为每一个任务维护一个温度优化器。"""
 
     def __init__(
-            self,
-            llm_config: dict,
-            state_manager: "StateManager",
-            **kwargs
+        self,
+        translator: Translator,
+        **kwargs
     ):
-        super().__init__(llm_config, **kwargs)
-        self.state_manager = state_manager
+        super().__init__(translator.llm_config, **kwargs)
+        self.translator = translator
         self.module_name: Optional[str] = None
         self.module_translation: Optional[ModuleTranslation] = None
         self.translation_task: Optional[TranslationTask] = None
@@ -146,7 +146,7 @@ class CodeMonkey(BaseAgent):
         # 当前采纳的转译结果
         self.translation_completion: Optional[dict] = None
         # 记忆模块
-        self.long_memory = TranspileMemory(llm_config, state_manager)
+        self.long_memory = TranspileMemory(llm_config, translator)
         self.translation_experience = []
 
         # TODO：暂时不使用工具，对于 DeepSeek 模型，不能保证该模型是否能够在该使用工具的场景下正确使用工具。

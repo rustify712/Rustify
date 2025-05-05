@@ -100,7 +100,8 @@ class DepGraphClangNodeVisitor(ClangNodeVisitor):
         self.translation_unit: Optional[clang.cindex.Cursor] = None
         self.nodes: List[DGNode] = []
         self.edges: List[DGEdge] = []
-
+        # 图根节点
+        self.graph_root_node: Optional[DGNode] = None
         self.parent_graph_node: Optional[DGNode] = None
         # 定义节点 cursor -> DGNode 节点
         self.cursor_node_map = {}
@@ -109,6 +110,10 @@ class DepGraphClangNodeVisitor(ClangNodeVisitor):
         self.global_decl_def_map = {}
         # 未完成的边
         self.unfinished_edges = []
+
+        # 匿名索引: 父级节点 -> 匿名数量
+        self.anonymous_index = defaultdict(int)
+        self.anonymous_node_map = {}
 
     @staticmethod
     def cursor_key(cursor: clang.cindex.Cursor):
@@ -124,6 +129,12 @@ class DepGraphClangNodeVisitor(ClangNodeVisitor):
 
     def get_cursor_map(self, cursor: clang.cindex.Cursor):
         return self.cursor_node_map.get(self.cursor_key(cursor), None)
+
+    def set_anonymous_map(self, cursor: clang.cindex.Cursor, node: DGNode):
+        self.anonymous_node_map[self.cursor_key(cursor)] = node
+
+    def get_anonymous_map(self, cursor: clang.cindex.Cursor):
+        return self.anonymous_node_map.get(self.cursor_key(cursor), None)
 
     def parent_node(self, cursor: clang.cindex.Cursor) -> Optional[DGNode]:
         """获取父节点"""
@@ -198,6 +209,10 @@ class DepGraphClangNodeVisitor(ClangNodeVisitor):
         visitor.visit(root_node)
         return visitor
 
+    def finalize(self):
+        """处理 unfinished_edges"""
+        ...
+
     def build_graph(self):
         """构建依赖图
 
@@ -213,9 +228,11 @@ class DepGraphClangNodeVisitor(ClangNodeVisitor):
                     src_node = src_def_node
                 else:
                     src_node_attr = DGNode._id2attr[src_id]
-                    if src_node_attr[2] in self._expected_files:
-                        print(f"src node not found: {DGNode._id2attr[src_id]} -> {DGNode._id2attr[dst_id]}")
-                    continue
+                    if src_node_attr[1].startswith("__builtin"):
+                        continue
+                    if src_node_attr[2] not in self._expected_files:
+                        continue
+                    print(f"src node not found: {DGNode._id2attr[src_id]} -> {DGNode._id2attr[dst_id]}")
             dst_node = DGNode.get_node_by_id(dst_id)
             if dst_node is None:
                 dst_def_node = self.global_decl_def_map.get(dst_id, None)
@@ -223,22 +240,13 @@ class DepGraphClangNodeVisitor(ClangNodeVisitor):
                     dst_node = dst_def_node
                 else:
                     dst_node_attr = DGNode._id2attr[dst_id]
-                    if dst_node_attr[2] in self._expected_files:
-                        print(f"dst node not found: {DGNode._id2attr[src_id]} -> {DGNode._id2attr[dst_id]}")
-                    # 将 ‘未找到 dst 节点’ 翻译为英文：
-                    continue
+                    if dst_node_attr[1].startswith("__builtin"):
+                        continue
+                    if dst_node_attr[2] not in self._expected_files:
+                        continue
+                    print(f"dst node not found: {DGNode._id2attr[src_id]} -> {DGNode._id2attr[dst_id]}")
             if src_node and dst_node:
                 self.add_edge(src_node, dst_node, edge_type)
-        # 2. 处理 Import 边，将 .c 中的 Import 边转换为 .h 中的 Include 边
-        # header_node_map = {}
-        # for node in self.nodes:
-        #     if node.type == DGNodeType.FILE and node.name == node.location and node.name.endswith(".h"):
-        #         # 这是一个 translation_unit 节点，即 C 头文件节点
-        #         header_name = os.path.basename(node.name)
-        #         header_node_map[header_name] = node
-        # for node in self.nodes:
-        #     if node.type == DGNodeType.FILE and node.name.endswith(".h") and node.location.endswith(".c"):
-        #         print(node)
 
         dep_graph = DepGraph(self.nodes, self.edges)
         return dep_graph
@@ -251,17 +259,18 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
 
     def visit_translation_unit(self, cursor: clang.cindex.Cursor):
         """访问语法树根节点"""
-        graph_root_node = DGNode.new(
+        self.graph_root_node = DGNode.new(
             type=DGNodeType.FILE,
             name=cursor.spelling,
             location=cursor.spelling,
             text=""
         )
-        self.translation_unit = cursor
-        self.set_cursor_map(cursor, graph_root_node)
-        self.add_node(graph_root_node)
 
-        self.parent_graph_node = graph_root_node
+        self.translation_unit = cursor
+        self.set_cursor_map(cursor, self.graph_root_node)
+        self.add_node(self.graph_root_node)
+
+        self.parent_graph_node = self.graph_root_node
         self.parent_cursor = cursor
         self.generic_visit(self.node_children(cursor))
         self.parent_graph_node = None
@@ -318,7 +327,7 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
     def visit_struct_decl(self, cursor: clang.cindex.Cursor):
         """结构体定义
 
-        1. 匿名结构体定义
+        1. 无名结构体定义
         typedef struct {} struct_name;
         2. 非定义节点
         struct undefined_struct_name;
@@ -326,9 +335,9 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
         struct struct_name {};
         """
         # 1. 匿名结构体定义，交由 visit_typedef_decl 处理
-        if cursor.is_anonymous() or cursor.spelling.strip() == "":
+        if not cursor.is_anonymous() and cursor.spelling.strip() == "":
             return
-        # 2. 声明节点
+        # 3. 声明节点
         if not cursor.is_definition():
             # 尝试查找定义节点
             def_cursor = cursor.get_definition()
@@ -365,9 +374,23 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
             location=cursor.location.file.name,
             text=self.node_text(cursor),
             extra={
-                "raw_comment": cursor.raw_comment or ""
+                "raw_comment": cursor.raw_comment or "",
+                "is_anonymous": cursor.is_anonymous()
             }
         )
+        if cursor.is_anonymous():
+            if self.parent_graph_node == self.graph_root_node:
+                parent_node_name = "anonymous"
+                # 避免合并到上级节点
+                struct_node.extra["is_anonymous"] = False
+            else:
+                parent_node_name = self.parent_graph_node.name
+            anonymous_index = self.anonymous_index[parent_node_name]
+            self.anonymous_index[parent_node_name] += 1
+            struct_node.name = f"{parent_node_name}#{anonymous_index}"
+            if self.cursor_key(cursor) not in self.anonymous_node_map:
+                self.set_anonymous_map(cursor, struct_node)
+
         self.set_cursor_map(cursor, struct_node)
         self.add_node(struct_node)
         self.add_edge(self.parent_node(cursor), struct_node, DGEdgeType.INCLUDE)
@@ -390,10 +413,11 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
         3. 有名联合体定义
         union union_name {};
         """
-        # 1. 匿名联合体定义，交由 visit_typedef_decl 处理
-        if cursor.is_anonymous() or cursor.spelling.strip() == "":
+        # 2. 无名联合体定义，交由 visit_typedef_decl 处理
+        if not cursor.is_anonymous() and cursor.spelling.strip() == "":
             return
-        # 2. 非定义节点
+
+        # 3. 非定义节点
         if not cursor.is_definition():
             # 尝试查找定义节点
             def_cursor = cursor.get_definition()
@@ -429,9 +453,23 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
             location=cursor.location.file.name,
             text=self.node_text(cursor),
             extra={
-                "raw_comment": cursor.raw_comment or ""
+                "raw_comment": cursor.raw_comment or "",
+                "is_anonymous": cursor.is_anonymous()
             }
         )
+        if cursor.is_anonymous():
+            if self.parent_graph_node == self.graph_root_node:
+                parent_node_name = "anonymous"
+                # 避免合并到上级节点
+                union_node.extra["is_anonymous"] = False
+            else:
+                parent_node_name = self.parent_graph_node.name
+            anonymous_index = self.anonymous_index[parent_node_name]
+            self.anonymous_index[parent_node_name] += 1
+            union_node.name = f"{parent_node_name}#{anonymous_index}"
+            if self.cursor_key(cursor) not in self.anonymous_node_map:
+                self.set_anonymous_map(cursor, union_node)
+
         self.set_cursor_map(cursor, union_node)
         self.add_node(union_node)
         self.add_edge(self.parent_node(cursor), union_node, DGEdgeType.INCLUDE)
@@ -454,8 +492,8 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
         3. 有名枚举定义
         enum enum_name {};
         """
-        # 1. 匿名枚举定义，交由 visit_typedef_decl 处理
-        if cursor.is_anonymous() or cursor.spelling.strip() == "":
+        # 1. 交由 visit_typedef_decl 处理
+        if not cursor.is_anonymous() and cursor.spelling.strip() == "":
             return
         # 2. 非定义节点
         if not cursor.is_definition():
@@ -494,9 +532,23 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
             location=cursor.location.file.name,
             text=self.node_text(cursor),
             extra={
-                "raw_comment": cursor.raw_comment or ""
+                "raw_comment": cursor.raw_comment or "",
+                "is_anonymous": cursor.is_anonymous()
             }
         )
+        if cursor.is_anonymous():
+            if self.parent_graph_node == self.graph_root_node:
+                parent_node_name = "anonymous"
+                # 避免合并到上级节点
+                enum_node.extra["is_anonymous"] = False
+            else:
+                parent_node_name = self.parent_graph_node.name
+            anonymous_index = self.anonymous_index[parent_node_name]
+            self.anonymous_index[parent_node_name] += 1
+            enum_node.name = f"{parent_node_name}#{anonymous_index}"
+            if self.cursor_key(cursor) not in self.anonymous_node_map:
+                self.set_anonymous_map(cursor, enum_node)
+
         self.set_cursor_map(cursor, enum_node)
         self.add_node(enum_node)
         self.add_edge(self.parent_node(cursor), enum_node, DGEdgeType.INCLUDE)
@@ -671,7 +723,7 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
     def visit_decl_ref_expr(self, cursor: clang.cindex.Cursor):
         """访问声明引用
 
-        目前仅记录全局变量
+        目前仅记录全局变量, 以及匿名枚举引用关系
         """
         def_cursor = cursor.get_definition() or cursor.referenced
         if def_cursor.kind == clang.cindex.CursorKind.VAR_DECL:
@@ -693,6 +745,23 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
                         decl_node_id,
                         DGEdgeType.INCLUDE
                     ))
+        elif def_cursor.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
+            if def_cursor.semantic_parent.is_anonymous():
+                # 匿名枚举引用
+                anonymous_graph_node = self.get_anonymous_map(def_cursor.semantic_parent)
+                if anonymous_graph_node is None:
+                    return
+                if self.parent_graph_node == anonymous_graph_node:
+                    return
+                if anonymous_graph_node:
+                    self.add_edge(self.parent_graph_node, anonymous_graph_node, DGEdgeType.INCLUDE)
+                else:
+                    self.unfinished_edges.append((
+                        self.parent_graph_node.id,
+                        self.get_anonymous_map(def_cursor.semantic_parent).id,
+                        DGEdgeType.INCLUDE
+                    ))
+
 
     def visit_type_ref(self, cursor: clang.cindex.Cursor):
         """访问类型引用
@@ -772,7 +841,7 @@ class DepGraphClangCNodeVisitor(DepGraphClangNodeVisitor, ClangCNodeVisitor):
             )
         referenced_parent_node = DGNode.get_node_by_id(referenced_parent_node_id)
         if referenced_parent_node:
-            self.add_edge(self.parent_node(referenced_parent_cursor), referenced_parent_node, DGEdgeType.INCLUDE)
+            self.add_edge(self.parent_graph_node, referenced_parent_node, DGEdgeType.INCLUDE)
         else:
             self.unfinished_edges.append((
                 self.parent_node(referenced_parent_cursor).id,

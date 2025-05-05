@@ -60,5 +60,12 @@ class PromptLoader:
                 return temp_tpl.get(prompt_name, **kwargs)
         raise ValueError(f"prompt template not found: {prompt_name}")
 
+    @classmethod
+    def has_prompt(cls, prompt_name: str) -> bool:
+        for temp_tpl in cls._prompt_templates:
+            if prompt_name in temp_tpl.list_templates():
+                return True
+        return False
+
 
 __all__ = ["PromptLoader"]

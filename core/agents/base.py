@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import copy
@@ -152,10 +153,13 @@ class BaseAgent:
 
     @property
     def system_message(self):
-        return PromptLoader.get_prompt(
-            f"{self.ROLE}/system.prompt",
-            tools=self.tools
-        )
+        if PromptLoader.has_prompt(f"{self.ROLE}/system.prompt"):
+            return PromptLoader.get_prompt(
+                f"{self.ROLE}/system.prompt",
+                tools=self.tools
+            )
+        else:
+            raise RuntimeError(f"{self.ROLE}'s system prompt not found, please check the prompt path")
 
     def run(self, pre_response: AgentResponse) -> AgentResponse:
         """
@@ -194,10 +198,17 @@ class BaseAgent:
                     del message[key]
         if not messages:
             raise ValueError("Messages cannot be empty")
-        if messages[0]["role"] != "system":
+        if messages[0]["role"] != "system" and self.system_message:
             messages.insert(0, {"role": "system", "content": self.system_message})
 
         return messages
+
+    async def async_call_llm(self, messages: list[dict], **kwargs) -> LLMClientResponse:
+        return await asyncio.to_thread(
+            self.call_llm,
+            messages=messages,
+            **kwargs
+        )
 
     def call_llm(self, messages: list[dict], **kwargs) -> LLMClientResponse:
         """调用大模型并返回结果

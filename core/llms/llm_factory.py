@@ -16,9 +16,6 @@ class LLMFactory:
         if llm_client_type == "openai":
             from core.llms.openai_client import OpenAIClient
             return OpenAIClient(llm_config, **kwargs)
-        elif llm_client_type == "anthropic":
-            from core.llms.anthropic_client import AnthropicClient
-            return AnthropicClient(llm_config, **kwargs)
         else:
             # 需要自行实现或使用 one-api 等工具
             raise ValueError(f"unsupported large language model type: {llm_client_type}")

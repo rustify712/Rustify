@@ -17,6 +17,8 @@ from core.db.models.translation import TranslationTable
 from core.schema.translation import TranslationTask
 from core.state.state_manager import ModuleTranslation, StateManager
 from core.db.session import SessionManager
+
+from core.translator import Translator
 from core.utils.decorator import singleton
 from core.utils.prompt_loader import PromptLoader
 
@@ -59,12 +61,11 @@ class TranspileMemory(BaseAgent):
 
     def __init__(
             self,
-            llm_config: dict,
-            state_manager: "StateManager",
+            translator: Translator,
             **kwargs
     ):
-        super().__init__(llm_config, **kwargs, name=self.ROLE)
-        self.state_manager = state_manager
+        super().__init__(translator.llm_config, **kwargs, name=self.ROLE)
+        self.translator = translator
         chroma_client = chromadb.PersistentClient(
             path=Config.RAG_KNOWLEDGE_DIR
         )
