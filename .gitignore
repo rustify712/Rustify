@@ -1,5 +1,7 @@
+.vscode
 .idea
 
 **/target/
 **/logs
 **/.vcscore
+__pycache__
