@@ -1,0 +1,25 @@
+[package]
+name = "libtree"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "ELF dependency tree viewer"
+license = "MIT"
+repository = "https://github.com/yourusername/libtree"
+
+[dependencies]
+colored = "2.1.0"
+structopt = "0.3.26"
+libc = "0.2"
+nix = "0.26"
+anyhow = "1.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3.3"
+assert_cmd = "2.0"
+predicates = "2.1"
+
+[profile.release]
+lto = true
+codegen-units = 1

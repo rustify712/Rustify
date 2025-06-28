@@ -19,13 +19,15 @@ class TranslationTaskSource(BaseModel):
     nodes: List[TranslationUnitNode] = Field(description="待转译的 C/C++ 节点")
     description: Optional[str] = Field(description="节点描述", default="")
 
-class TranslationTaskTarget(BaseModel):
+class TranslationTaskTargetItem(BaseModel):
     name: str = Field(description="转译后的 Rust 节点名称")
     type: str = Field(description="转译后的 Rust 节点类型")
     text: str = Field(description="转译后的 Rust 代码")
     description: Optional[str] = Field(description="节点描述", default="")
     filepath: Optional[str] = Field(description="转译后的 Rust 代码所在文件路径", default="")
 
+class TranslationTaskTarget(BaseModel):
+    files: List[TranslationTaskTargetItem]
 
 class TranslationTaskStatus(PyEnum):
     CREATED = "created"

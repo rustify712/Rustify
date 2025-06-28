@@ -1,1 +1,3 @@
-**重要**：遵循以下 JSON Schema：{{ json_schema }}
+{% if json_schema %}
+**重要**：输出必须遵循以下 JSON Schema：{{ json_schema }}
+{% endif %}

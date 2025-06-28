@@ -1,0 +1,26 @@
+[package]
+name = "libtree_rs"
+version = "3.1.1"  # Same version as the original C project
+edition = "2021"
+authors = ["Rust Port Maintainers"]
+description = "A tool for displaying shared library dependencies as a tree"
+license = "MIT"
+
+[dependencies]
+# For file system operations and path handling
+glob = "0.3"       # For handling glob patterns in ld.so.conf
+nix = "0.26"       # For Unix-specific functionality like uname
+
+# For error handling and results
+thiserror = "1.0"  # For better error handling
+
+# For command-line argument parsing
+clap = { version = "4.3", features = ["derive"] }
+
+[lib]
+name = "libtree_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "libtree"
+path = "src/main.rs"

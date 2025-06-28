@@ -1,0 +1,128 @@
+请你按照以下格式返回代码块，表示变更代码块：
+
+```lang:filepath
+<<<<<<< SEARCH
+[需要搜索到的待修改内容]
+=======
+[用于替换的新内容]
+>>>>>>> REPLACE
+```
+其中，
+- `lang` 是代码块的编程语言。
+- `filepath` 是替换代码所在文件的路径。
+
+## 关键规则
+1. 搜索内容必须与相关文件**部分完全匹配**才能找到
+- 逐字符匹配，包括空格、缩进和行结束符。
+- 包含所有的注释、文档字符串，但如果原始内容有行号，不应该添加行号，例如"1:xxx"或"101:yyy"对应的内容为"xxx"和"yyy"等。
+2. "SEARCH/REPLACE"方式**仅会替换首次匹配到的内容**
+- 如果需要进行多次更改，可以包含多个**唯一**的“搜索/替换”模块。
+- 在每个"SEARCH"部分中，必须包含**足够多**的行，以唯一匹配需要更改的内容，这意味着：
+    - 在变更点**之前**，至少包含3-5行上下文内容
+    - 在变更点**之后**，至少包含3-5行上下文内容
+    - 包含所有空格、缩进以及周围的代码，完全按照文件中显示的样子
+- 当使用多个"SEARCH/REPLACE"块时，应按照它们在文件中出现的顺序进行排列。
+3. 保持"SEARCH/REPLACE"块的简洁性
+- 将过大的"SEARCH/REPLACE"块拆分成一系列较小的模块，每个模块只更改文件的一小部分内容。
+- 不要在"SEARCH/REPLACE"块中包含大量未更改的行。
+- 每一行都必须完整，不要在行的中途截断，因为这可能导致匹配失败。
+4. 特殊操作
+- 要创建文件：使用一个仅包含lang和filepath以及相关固有格式的"SEARCH/REPLACE"块，"SEARCH"和"REPLACE"均为空。
+- 要移动代码：使用两个"SEARCH/REPLACE"块（一个用于从原位置删除，另一个用于在新位置插入）。
+- 要删除代码：使用空的"REPLACE"部分
+5. **请注意，在[需要搜索到的待修改内容]与[用于替换的新内容]中不应该添加行号，行号通常使用“数字:”来表示**
+
+## 示例
+### 创建操作
+例如：创建文件 main.rs，应采用的替换代码块为：
+```rust:main.rs
+<<<<<<< SEARCH
+=======
+>>>>>>> REPLACE
+```
+
+### 增加操作
+例如：对于以下代码片段：
+1:fn main() {
+2:}
+在第 2 行插入一行代码 println!("Hello, world!");，应采用的替换代码块为：
+```rust:main.rs
+<<<<<<< SEARCH
+fn main() {
+}
+=======
+fn main() {
+    println!("Hello, world!");
+}
+>>>>>>> REPLACE
+```
+
+### 删除操作
+例如：对于以下代码片段：
+1:fn main() {
+2:    println!("Hello, world!");
+3:}
+4:
+5:// This is a comment for the main function.
+6:fn main() {
+7:    println!("Hello, world!");
+8:}
+删除多余的 main 函数可以采用的替换代码块为：
+```rust:main.rs
+<<<<<<< SEARCH
+fn main() {
+    println!("Hello, world!");
+}
+=======
+>>>>>>> REPLACE
+```
+值得注意的是，在这个例子中，该替换代码块默认删除第一个main函数，如果要删除第二个main函数，需要添加SEARCH块的内容使其唯一检索到第二个main函数，例如
+
+```rust:main.rs
+<<<<<<< SEARCH
+// This is a comment for the main function.
+fn main() {
+    println!("Hello, world!");
+}
+=======
+// This is a comment for the main function.
+>>>>>>> REPLACE
+
+### 修改操作
+例如：对于以下代码片段：
+1:fn main() {
+2:    println!("Hello, world!");
+3:}
+将 main 函数修改为 hello 函数，应采用的替换代码块为：
+```rust:main.rs
+<<<<<<< SEARCH
+fn main() {
+    println!("Hello, world!");
+}
+=======
+fn hello() {
+    println!("Hello, world!");
+}
+>>>>>>> REPLACE
+```
+
+### 以下是对于出现行号的情况的示例
+例如：对于以下代码片段：
+1:fn main() {
+2:    println!("Hello, world!");
+3:}
+在第 2 行插入一行代码 println!("Hello, world!");，应采用的替换代码块为：
+```rust:main.rs
+<<<<<<< SEARCH
+fn main() {
+    println!("Hello, world!");
+}
+=======
+fn main() {
+    println!("Hello, world!");
+    println!("Hello, world!");
+}
+>>>>>>> REPLACE
+```
+
+**重要**：上方"1:","2:","3"是用来表示代码的行号，不是代码的内容，不应该在内容中包含行号，**替换代码块中不应该包含行号**。

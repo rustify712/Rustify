@@ -1,0 +1,10 @@
+[package]
+name = "rgba_rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rgba"
+path = "src/rgba.rs"
+
+[dependencies]

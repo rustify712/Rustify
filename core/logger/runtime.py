@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from core.logger.base_logger import BaseLogger
 
 try:
-    from core.config import Config
+    from core.config_back import Config
 
     LOG_LEVEL = Config.LOG_LEVEL
     LOG_TYPE = Config.LOG_TYPE

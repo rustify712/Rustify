@@ -3,7 +3,7 @@ from abc import abstractmethod
 from typing import Generic, List, Optional, Tuple, TypeVar, Callable
 import clang.cindex
 
-from core.config import Config
+from core.config_back import Config
 
 try:
     if Config.CLANG_LIB_FILE:

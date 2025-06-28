@@ -1,9 +1,14 @@
 import asyncio
+import json
 import os
+import selectors
+import subprocess
 import time
+import re
 import traceback
-from typing import  Optional
+from typing import Any, Dict, Optional
 
+import toml
 from pydantic import BaseModel, Field
 
 from core.agents.base import AgentResponse, AgentResponseStatus, BaseAgent
@@ -13,7 +18,7 @@ from core.agents.tech_leader import TechLeader
 from core.graph.dep_graph_visitor import DepGraphClangNodeVisitor
 from core.schema.response import ProjectManagerResponseType
 from core.translator import Translator
-
+from core.utils.rust_utils import extract_error_output
 
 class SummarizeModuleResponse(BaseModel):
     name: str = Field(description="模块名称")
@@ -66,10 +71,11 @@ class ProjectManager(BaseAgent):
                 # 已经成功创建目标项目，接下来应该分配模块转译任务给 Tech Leader
                 return asyncio.run(self.assign_module_translation(agent_response))
             elif agent_response.type == ProjectManagerResponseType.ALL_MODULES_DONE:
-                # TODO merge all modules
+                # TODO: 合并这些模块到一个 Rust 工程
+                self.logger.info("all modules have been translated, project manager done.")
                 return AgentResponse.done(self, ProjectManagerResponseType.ALL_TASKS_DONE)
         elif agent_response.type == AgentResponseStatus.ERROR:
-            # TODO: exception handling
+            # TODO: 错误处理
             self.logger.error(f"error occurred in run: {agent_response}")
             return agent_response
 

@@ -1,0 +1,23 @@
+项目经理通过依赖分析工具已经将项目拆分为多个模块，你负责 {{ module_name }} 模块。
+你将收到该模块的介绍以及待转译的C文件，你需要对该 Rust 项目进行初始化。
+
+# {{ module_name }} 模块介绍：
+{{ module_description }}
+
+# {{ module_name }} 文件介绍：
+{% include "partials/files.prompt" %}
+
+你需要初始化该项目的文件结构，创建 rust 占位符文件，除必要的{% if crate_type == "bin" %} main.rs {% else %} lib.rs {% endif %} 和 Cargo.toml 文件外，其他文件为空，无需添加任何内容。
+{% if crate_type == "lib" %}你需要为 lib.rs 添加必要的模块导出代码。{% endif %}
+
+# 以下是可供参考的模板：
+## Cargo.toml 模板
+```toml
+[package]
+name = {{ module_name }}
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+```

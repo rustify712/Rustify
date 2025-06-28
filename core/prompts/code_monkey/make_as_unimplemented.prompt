@@ -1,0 +1,13 @@
+{{ translation_context }}
+
+# 模块 {{ module_name }} 相关文件
+{% include "partials/files.prompt" %}
+
+你尝试修复多次代码多次，但仍然出错。这次你决定放弃修复，而是将其标记为未实现的功能。请你完成以下任务：
+
+- 1. 阅读并理解该转译任务的代码，分析其意图和逻辑。
+- 2. 为这段 Rust 代码编写详细的文档注释 `///`, 解释每个函数的功能, 参数和返回值。
+- 3. 将其转为签名, 保留原代码的意图, 但使用 unimplemented! 宏占位, 表示功能待实现。
+
+你应该使用变更代码块表示你的修改结果：
+{% include "partials/changed_code_block.prompt" %}

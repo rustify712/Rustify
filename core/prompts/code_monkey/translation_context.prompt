@@ -1,48 +1,27 @@
-{% if project_description or project_structure %}
-## 当前 Rust 工程基本信息：
-{% if project_description %}
-### 项目描述
-{{ project_description }}
-{% endif %}
-{% if project_structure %}
-### 项目结构
-{{ project_structure }}
-{% endif %}
-{% endif %}
+你正在一个将 C/C++ 代码转译为 Rust 代码的项目中工作，你的小组负责模块 {{ module_name }} 的转译工作。
+你当前正在完成组长分配的转译任务，以下是对当前转译任务的详细描述：
 
-## 这些文件目前在项目中已经实现：
+# {{ module_name }} 模块介绍：
+{{ module_description }}
+
+# {{ module_name }} 模块文件介绍：
 {% include "partials/files.prompt" %}
 
-{% if translation_tasks %}
-## 以下是你所在小组的全部转译任务：
-{% for translation_task in translation_tasks %}
-
-### 任务#{{ loop.index }}：{{ translation_task.source.name }}{% if translation_task.status == "init" %} (未开始){% elif translation_task.status == "running" %} (进行中){% else %} (已完成){% endif %}
-{{ translation_task.source.description }}
-{#{% for node in translation_task.source.nodes %}#}
-{#{{ node.text }}#}
-{#{% endfor %}#}
-
-{% endfor %}
-{% endif %}
-
-## 以下是你需要完成的转译任务：{{ current_translation_task.source.name }}
+# 当前需要进行的任务：{{ current_translation_task.source.name }}
 {% for node in current_translation_task.source.nodes %}
+```
+// filepath: {{ node.filepath }}
 {{ node.text }}
-
+```
 {% endfor %}
 
 {% if related_translation_tasks %}
-## 以下是与当前任务相关的其他转译任务：
+# 与当前任务相关的其他转译任务：
 {% for related_translation_task in related_translation_tasks %}
 {% if related_translation_task.target.description %}
-### {{ related_translation_task.source.name }}
+## {{ related_translation_task.source.name }}
 {{ related_translation_task.target.description }}
-{% endif %}
-{#{% if related_translation_task.target.text %}#}
-{#转译后的 Rust 代码：#}
-{#{{ related_translation_task.target.text }}#}
-{#{% endif %}#}
 
+{% endif %}
 {% endfor %}
 {% endif %}

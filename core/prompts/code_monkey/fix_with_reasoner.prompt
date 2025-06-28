@@ -1,0 +1,19 @@
+用户尝试编译一个 Rust 模块 {{ module_name }} 时失败，请你根据模块代码以及编译器报错信息，帮助用户修复错误。
+
+# {{ module_name }} 相关文件
+{% include "partials/files.prompt" %}
+
+# 错误信息
+{% for error in errors %}
+{{ error }}
+{% endfor %}
+
+{% if explanations %}
+# 针对错误的解释
+{% for explanation in explanations %}
+{{ explanation }}
+{% endfor %}
+{% endif %}
+
+你的所有修改都应该使用变更代码块表示：
+{% include "partials/changed_code_block.prompt" %}

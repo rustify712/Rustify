@@ -1,0 +1,6 @@
+{{ translation_context }}
+
+以下是完成转译后的模块{{ module_name }}相关文件:
+{% include "partials/files.prompt" %}
+
+你需要结合转译任务信息以及转译后的代码，给出对当前转译任务的结构化描述。

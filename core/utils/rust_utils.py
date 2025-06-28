@@ -7,7 +7,7 @@ import selectors
 from typing import Any, Dict, Iterable, Optional
 
 try:
-    from core.config import Config
+    from core.config_back import Config
 
     RUSTC_BIN = Config.RUSTC_BIN
     CARGO_BIN = Config.CARGO_BIN

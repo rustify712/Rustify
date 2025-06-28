@@ -1,7 +1,7 @@
+import asyncio
 import copy
 import json
 import os
-import uuid
 from contextlib import contextmanager
 from enum import Enum
 from typing import Callable, List, Literal, Optional
@@ -10,11 +10,19 @@ from threading import Lock
 
 from pydantic import BaseModel
 
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload, joinedload
+
+from core.db.models.translation import ModuleTranslationEntity, ProjectTranslation, ProjectTranslationStatus, \
+    TranslationTaskEntity
+from core.db.session import SessionManager
+from core.db.models.project import FileContentEntity, FileEntity, ProjectEntity
 from core.graph.dep_graph import DGNode
 from core.schema.translation import ModuleTranslation, ModuleTranslationStatus, TranslationTask, TranslationTaskSource, \
     TranslationTaskStatus, TranslationTaskTarget, TranslationUnitNode
 from core.utils.file_utils import add_line_numbers
 from core.utils.vfs import VirtualFileSystem
+from core.version.vcs import VCS
 
 
 class ProjectFile(BaseModel):
@@ -44,12 +52,12 @@ class Project:
         self.details = kwargs
 
     def list_files(
-            self,
-            show_content: bool = False,
-            show_summary: bool = False,
-            show_line_numbers: bool = False,
-            ignore_func: Callable[[str], bool] = None,
-            relpath: Optional[str] = None
+        self,
+        show_content: bool = False,
+        show_summary: bool = False,
+        show_line_numbers: bool = False,
+        ignore_func: Callable[[str], bool] = None,
+        relpath: Optional[str] = None
     ) -> List[ProjectFile]:
         """列出目录下的全部文件。
 
@@ -156,23 +164,27 @@ class Project:
 
     @property
     def src_path(self):
-        return os.path.join(self.path, "src")
+        return self.path
 
     @property
     def test_path(self):
-        return os.path.join(self.path, "test")
+        raise NotImplementedError("Subclasses must implement test_path property")
+        # return os.path.join(self.path, "test")
 
 
 class TargetProject(Project):
     def __init__(
-            self,
-            id: str,
-            name: str,
-            path: str,
-            description: Optional[str] = None,
-            **kwargs
+        self,
+        id: str,
+        name: str,
+        path: str,
+        description: Optional[str] = None,
+        file_system: Optional[VirtualFileSystem] = None,
+        **kwargs
     ):
         super().__init__(id, name, path, description, **kwargs)
+        self.file_system = file_system
+        self.vcs: VCS = VCS(self.path)
 
     @property
     def test_path(self):
@@ -366,9 +378,12 @@ def optimize_translation_units(nodes: list[tuple[int, DGNode]]):
 
 class StateManager:
 
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, session_manager: SessionManager, file_system: Optional[VirtualFileSystem] = None):
         self.bound_filepath = filepath
         self.state = State()
+        self.session_manager = session_manager
+        self.file_system = file_system
+        self.load_from_db = False
 
         self._lock = Lock()
 
@@ -376,33 +391,163 @@ class StateManager:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
                 if content:
-                    self.state.load_from_json(content)
+                    self.state.load_from_json(content, self.file_system)
+            if self.load_from_db and self.state.project_translation_id:
+                asyncio.run(self.load_by_project_translation_id(self.state.project_translation_id))
 
-    async def create_source_project(self, project_dir: str):
-        self.state.source_project = Project(
-            id=str(uuid.uuid4()),
+
+    async def list_projects_by_dirpath(self, project_dir: str) -> List[ProjectEntity]:
+        async with self.session_manager as session:
+            results = await session.execute(
+                select(ProjectEntity).where(ProjectEntity.dirpath == project_dir).order_by(
+                    ProjectEntity.create_time.desc()))
+            project_entities = results.scalars().all()
+        return project_entities
+
+    async def create_source_project(self, project_dir: str) -> ProjectEntity:
+        project_entity = ProjectEntity(
             name=os.path.basename(project_dir),
-            path=project_dir,
-            description=""
+            description="",
+            dirpath=project_dir
+        )
+
+        self.state.source_project = Project(
+            id=project_entity.id,
+            name=project_entity.name,
+            path=project_entity.dirpath,
+            description=project_entity.description
         )
         self.sync_to_disk()
+        return project_entity
 
     async def create_target_project(self, name: str, dirpath: str, description: str):
+        new_project = ProjectEntity(
+            name=name,
+            dirpath=dirpath,
+            description=description,
+        )
         os.makedirs(dirpath, exist_ok=True)
         self.state.target_project = TargetProject(
-            id=str(uuid.uuid4()),
-            name=name,
-            path=dirpath,
-            description=description
+            id=new_project.id,
+            name=new_project.name,
+            path=new_project.dirpath,
+            description=new_project.description,
+            file_system=self.file_system
         )
+        self.sync_to_disk()
+        self.state.target_project.vcs.init()
+        if self.file_system:
+            self.file_system.load(
+                self.state.target_project.path,
+            )
 
+    async def load_source_project_by_id(self, project_id: str):
+        async with self.session_manager as session:
+            results = await session.execute(select(ProjectEntity).where(ProjectEntity.id == project_id))
+            project_entity = results.scalars().first()
+        if not self.state.source_project.name:
+            self.state.source_project.name = project_entity.name
+        if not self.state.source_project.path:
+            self.state.source_project.path = project_entity.dirpath
+        if not self.state.source_project.description:
+            self.state.source_project.description = project_entity.description
+        # 加载文件摘要
+        async with self.session_manager as session:
+            results = await session.execute(
+                select(FileEntity)
+                .where(FileEntity.project_id == project_id)
+                # TODO: 目前是数据库中只存储最新版本的数据，不同版本数据是通过 VCS 管理的，后续需要改进
+                .options(selectinload(FileEntity.content))  # 预加载文件内容
+            )
+            file_entities = results.scalars().all()
+            for file in file_entities:
+                if file.path not in self.state.source_project.file_summaries:
+                    self.state.source_project.file_summaries[file.path] = file.content.summary
         self.sync_to_disk()
 
-    async def save_source_project_file(self, filepath: str, content: str, summary: str = ""):
+    async def load_target_project_by_id(self, project_id: str):
+        async with self.session_manager as session:
+            results = await session.execute(select(ProjectEntity).where(ProjectEntity.id == project_id))
+            project_entity = results.scalars().first()
+        if not self.state.target_project.name:
+            self.state.target_project.name = project_entity.name
+        if not self.state.target_project.path:
+            self.state.target_project.path = project_entity.dirpath
+        if not self.state.target_project.description:
+            self.state.target_project.description = project_entity.description
+        # 加载文件摘要
+        async with self.session_manager as session:
+            results = await session.execute(
+                select(FileEntity)
+                .where(FileEntity.project_id == project_id)
+                # TODO: 目前是数据库中只存储最新版本的数据，不同版本数据是通过 VCS 管理的，后续需要改进
+                .options(selectinload(FileEntity.content))  # 预加载文件内容
+            )
+            file_entities = results.scalars().all()
+            for file in file_entities:
+                if file.path not in self.state.target_project.file_summaries:
+                    self.state.target_project.file_summaries[file.path] = file.content.summary
+        self.sync_to_disk()
+
+    async def load_module_translations_by_project_id(self, project_id: str):
+        async with self.session_manager as session:
+            results = await session.execute(
+                select(ModuleTranslationEntity)
+                .where(ModuleTranslationEntity.project_id == project_id)
+                .options(joinedload(ModuleTranslationEntity.translation_tasks))
+            )
+            module_translation_entities = results.scalars().all()
+        self.state.module_translations = [
+            ModuleTranslation(
+                id=module_translation_entity.id,
+                translation_tasks=[
+                    TranslationTask(
+                        id=task.id,
+                        source=TranslationTaskSource(**task.source),
+                        target=TranslationTaskTarget(**task.target) if task.target else None,
+                        prerequisites=task.prerequisites,
+                        status=task.status
+                    )
+                    for task in module_translation_entity.translation_tasks
+                ],
+                related_files=module_translation_entity.related_files,
+                status=module_translation_entity.status
+            )
+            for module_translation_entity in module_translation_entities
+        ]
+        self.sync_to_disk()
+
+    async def load_by_project_translation_id(self, project_translation_id: str):
+        async with self.session_manager as session:
+            results = await session.execute(
+                select(ProjectTranslation).where(ProjectEntity.id == project_translation_id)
+            )
+            project_translation = results.scalars().first()
+            if project_translation:
+                await asyncio.gather(
+                    self.load_source_project_by_id(project_translation.source_project_id),
+                    self.load_target_project_by_id(project_translation.target_project_id),
+                    self.load_module_translations_by_project_id(project_translation.source_project_id)
+                )
+
+    async def _save_file(self, project_id: str, filepath: str, content: str, summary: str = "") -> FileEntity:
+        file_entity = FileEntity(
+            project_id=project_id,
+            path=filepath,
+            content=FileContentEntity(
+                content=content,
+                summary=summary
+            )
+        )
+        return file_entity
+
+    async def save_source_project_file(self, filepath: str, content: str, summary: str = "") -> FileEntity:
         if not self.state.source_project:
             raise ValueError("source project not loaded")
+        file_entity = await self._save_file(self.state.source_project.id, filepath, content, summary)
         self.state.source_project.file_summaries[filepath] = summary
         self.sync_to_disk()
+        return file_entity
 
     async def update_source_project_description(self, description: str):
         self.state.source_project.description = description
@@ -414,6 +559,7 @@ class StateManager:
             related_files: list[str]
     ):
         translation_tasks = []
+        translation_task_entities = []
         # node_id -> task_id
         node_task_lookup_map = {}
         # 记录每个任务的所有节点的依赖节点
@@ -513,6 +659,9 @@ class StateManager:
                 node_task_lookup_map[node_id]
                 for node_id in prerequisites_nodes[translation_task.id]
             ]))
+            translation_task_entities.append(
+                TranslationTaskEntity(**translation_task.model_dump())
+            )
 
         # 保存模块转译
         module_translation = ModuleTranslation(
@@ -520,14 +669,20 @@ class StateManager:
             related_files=[os.path.relpath(file, self.state.source_project.path) for file in related_files],
             status=ModuleTranslationStatus.CREATED
         )
+        module_translation_entity = ModuleTranslationEntity(
+            project_id=self.state.source_project.id,
+            translation_tasks=translation_task_entities,
+            related_files=module_translation.related_files,
+            status=module_translation.status
+        )
         self.state.module_translations.append(module_translation)
         self.sync_to_disk()
 
     async def update_module_translation_info(
-            self,
-            module_translation_id: str,
-            name: str,
-            description: str,
+        self,
+        module_translation_id: str,
+        name: str,
+        description: str,
     ):
         module_translation_path = os.path.join(self.state.target_project.path, name)
         module_translation = self.get_module_translation_by_id(module_translation_id)
@@ -535,7 +690,6 @@ class StateManager:
             module_translation.name = name
             module_translation.description = description
             module_translation.path = module_translation_path
-
             self.sync_to_disk()
 
     async def update_module_translation_status(self, module_translation_id: str, status: ModuleTranslationStatus):
@@ -554,11 +708,12 @@ class StateManager:
                 back_state.module_translations = [module_translation]
                 f.write(json.dumps(back_state.to_dict(), ensure_ascii=False, indent=4, cls=self.EnumEncoder))
 
+
     async def update_translation_task_status(
-            self,
-            module_translation_id: str,
-            translation_task_id: str,
-            status: TranslationTaskStatus
+        self,
+        module_translation_id: str,
+        translation_task_id: str,
+        status: TranslationTaskStatus
     ):
         module_translation = self.get_module_translation_by_id(module_translation_id)
         if module_translation:
@@ -573,24 +728,20 @@ class StateManager:
                 return module_translation
         return None
 
-    async def add_module_translation_related_rust_files(self, module_translation_id: str,
-                                                        related_rust_files: list[str]):
+    async def add_module_translation_related_rust_files(self, module_translation_id: str, related_rust_files: list[str]):
         module_translation = self.get_module_translation_by_id(module_translation_id)
         if module_translation:
             for rust_file in related_rust_files:
                 if rust_file not in module_translation.related_rust_files:
                     module_translation.related_rust_files.append(rust_file)
-
             self.sync_to_disk()
 
-    async def set_translation_task_target(self, module_translation_id: str, translation_task_id: str,
-                                          target: TranslationTaskTarget):
+    async def set_translation_task_target(self, module_translation_id: str, translation_task_id: str, target: TranslationTaskTarget):
         module_translation = self.get_module_translation_by_id(module_translation_id)
         if module_translation:
             translation_task = module_translation.get_translation_task_by_id(translation_task_id)
             if translation_task:
                 translation_task.target = target
-
                 self.sync_to_disk()
 
     class EnumEncoder(json.JSONEncoder):

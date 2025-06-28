@@ -1,0 +1,12 @@
+[package]
+name = "urlparser"
+version = "0.0.2"
+edition = "2021"
+authors = ["Converted from C to Rust"]
+description = "A URL parsing library"
+
+[lib]
+name = "urlparser"
+path = "src/lib.rs"
+
+[dependencies]

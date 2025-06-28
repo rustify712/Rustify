@@ -1,0 +1,32 @@
+[package]
+name = "quadtree"
+version = "0.1.0"
+edition = "2021"
+authors = ["Converted from C"]
+description = "A Rust implementation of a quadtree data structure"
+license = "MIT"
+
+[lib]
+name = "quadtree"
+path = "src/lib.rs"
+
+[dependencies]
+# No external dependencies required for this implementation
+
+[dev-dependencies]
+# Test dependencies can be added here if needed
+
+[features]
+default = []
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
+debug-assertions = false
+overflow-checks = false
+lto = true
+panic = 'unwind'
+incremental = false
+codegen-units = 1
+rpath = false
